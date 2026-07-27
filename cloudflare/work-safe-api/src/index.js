@@ -696,22 +696,66 @@ async function handleCheckin(request, env, deviceId) {
   }
 
   const msg = buildMessage(workerName, eventType, address, lat, lng, occurredIso);
+  const channels = body.channels && typeof body.channels === "object" ? body.channels : {};
+  // Default both on for older clients; require at least one when explicitly provided.
+  const wantEmail = channels.email === undefined && channels.sms === undefined ? true : !!channels.email;
+  const wantSms = channels.email === undefined && channels.sms === undefined ? true : !!channels.sms;
+  if (!wantEmail && !wantSms) {
+    return json(request, { ok: false, error: "Choose Email and/or SMS" }, 400);
+  }
+
   const recipients = [];
   for (const c of list) {
-    const emailResult = await sendEmail(env, c.email, msg.subject, msg.html, msg.text);
-    const smsResult = await sendSms(env, c.phone, msg.text);
+    let emailResult = { ok: false, reason: "skipped" };
+    let smsResult = { ok: false, reason: "skipped" };
+    const emailAttempted = wantEmail && !!c.email;
+    const smsAttempted = wantSms && !!c.phone;
+    if (emailAttempted) {
+      emailResult = await sendEmail(env, c.email, msg.subject, msg.html, msg.text);
+    } else if (wantEmail && !c.email) {
+      emailResult = { ok: false, reason: "no_email" };
+    }
+    if (smsAttempted) {
+      smsResult = await sendSms(env, c.phone, msg.text);
+    } else if (wantSms && !c.phone) {
+      smsResult = { ok: false, reason: "no_phone" };
+    }
     recipients.push({
       id: c.id,
       name: c.name,
       email: c.email,
       phone: c.phone,
-      email_ok: !!emailResult.ok,
-      sms_ok: !!smsResult.ok,
-      email_reason: emailResult.ok ? null : emailResult.reason || null,
-      sms_reason: smsResult.ok ? null : smsResult.reason || null,
-      email_detail: emailResult.ok ? null : emailResult.detail || null,
-      sms_detail: smsResult.ok ? null : smsResult.detail || null,
+      email_attempted: emailAttempted,
+      sms_attempted: smsAttempted,
+      email_ok: emailAttempted ? !!emailResult.ok : false,
+      sms_ok: smsAttempted ? !!smsResult.ok : false,
+      email_reason: emailAttempted
+        ? emailResult.ok
+          ? null
+          : emailResult.reason || null
+        : wantEmail
+          ? emailResult.reason || "skipped"
+          : "skipped",
+      sms_reason: smsAttempted
+        ? smsResult.ok
+          ? null
+          : smsResult.reason || null
+        : wantSms
+          ? smsResult.reason || "skipped"
+          : "skipped",
+      email_detail: emailAttempted && !emailResult.ok ? emailResult.detail || null : null,
+      sms_detail: smsAttempted && !smsResult.ok ? smsResult.detail || null : null,
     });
+  }
+
+  if (wantEmail && !recipients.some((r) => r.email_attempted) && wantSms && !recipients.some((r) => r.sms_attempted)) {
+    return json(request, { ok: false, error: "No contact has the selected channel (email/SMS)" }, 400);
+  }
+  if (wantEmail && !wantSms && !recipients.some((r) => r.email_attempted)) {
+    return json(request, { ok: false, error: "No selected contact has an email" }, 400);
+  }
+  if (wantSms && !wantEmail && !recipients.some((r) => r.sms_attempted)) {
+    return json(request, { ok: false, error: "No selected contact has a phone" }, 400);
   }
 
   const row = {

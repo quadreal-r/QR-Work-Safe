@@ -99,6 +99,14 @@
   .contact .nm{font-weight:800;font-size:15px;color:var(--qr-midnight)}
   .contact .meta{font-size:12px;color:var(--muted);font-weight:600;margin-top:2px;word-break:break-all}
   .empty{font-size:13px;color:var(--muted);font-weight:600;padding:8px 0}
+  .chan-row{display:flex;gap:8px;margin-bottom:12px}
+  .chan{
+    flex:1;min-height:44px;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;
+    display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800;font-size:14px;
+    color:var(--qr-midnight);cursor:pointer;user-select:none;
+  }
+  .chan:has(input:checked){border-color:var(--qr-blue);background:var(--blue-soft)}
+  .chan input{width:18px;height:18px;accent-color:var(--qr-blue)}
 
   .actions{display:flex;flex-direction:column;gap:10px;margin:16px 0}
   .btn-big{
@@ -242,6 +250,11 @@
 
     <div class="card">
       <h2>Notify</h2>
+      <div class="chan-row" id="channelRow">
+        <label class="chan"><input type="checkbox" id="chanEmail"> Email</label>
+        <label class="chan"><input type="checkbox" id="chanSms" checked> SMS</label>
+      </div>
+      <p class="empty" id="channelHint" style="margin-top:0">Choose at least one channel. SMS works now; email needs a sending domain.</p>
       <div class="contacts" id="contactPick"></div>
       <p class="empty" id="contactEmpty" hidden>No contacts yet. Add supervisors in Settings.</p>
     </div>
@@ -359,8 +372,8 @@
 <script src="native-bridge.js"></script>
 <script src="roster-data.js"></script>
 <script>
-const APP_VER='v1.0.3';
-const BUILD=4;
+const APP_VER='v1.0.4';
+const BUILD=5;
 const CF_API='https://work-safe-api.quadreal-rpiwin.workers.dev';
 const TOKEN_KEY='worksafe_cf_session_token';
 const DEVICE_KEY='worksafe_device_v1';
@@ -368,6 +381,7 @@ const WORKER_KEY='worksafe_worker_name';
 const BUILDING_KEY='worksafe_building_address';
 const SELECTED_KEY='worksafe_selected_contacts';
 const SESSION_KEY='worksafe_open_session';
+const CHANNELS_KEY='worksafe_notify_channels';
 
 const ROSTER=window.WORK_SAFE_ROSTER||{buildings:[],people:[]};
 const BUILDINGS=ROSTER.buildings||[];
@@ -743,6 +757,24 @@ async function doCheckin(eventType){
     toast('Select at least one contact');
     return;
   }
+  const wantEmail=!!document.getElementById('chanEmail').checked;
+  const wantSms=!!document.getElementById('chanSms').checked;
+  if(!wantEmail&&!wantSms){
+    toast('Choose Email and/or SMS');
+    return;
+  }
+  localStorage.setItem(CHANNELS_KEY,JSON.stringify({email:wantEmail,sms:wantSms}));
+  // Ensure selected contacts can receive at least one chosen channel
+  const active=contacts.filter(c=>selected.has(c.id)&&c.active!==false);
+  const usable=active.filter(c=>(wantEmail&&c.email)||(wantSms&&c.phone));
+  if(!usable.length){
+    toast(wantSms&&!wantEmail
+      ?'Selected contacts need a phone for SMS'
+      :wantEmail&&!wantSms
+        ?'Selected contacts need an email'
+        :'Selected contacts need email or phone');
+    return;
+  }
   if(eventType==='safe_ground'){
     if(!openSession||!openSession.sessionId){
       toast('Start with On site first');
@@ -773,6 +805,7 @@ async function doCheckin(eventType){
       address:addressParts.join(' · '),
       occurredAt:new Date().toISOString(),
       recipientIds:[...selected],
+      channels:{email:wantEmail,sms:wantSms},
       deviceId:deviceId(),
       sessionId:eventType==='safe_ground'?openSession.sessionId:undefined,
     };
@@ -790,21 +823,28 @@ async function doCheckin(eventType){
     }
     updateSafeButton();
     const rc=data.recipients||[];
+    const emailTried=rc.filter(r=>r.email_attempted).length;
+    const smsTried=rc.filter(r=>r.sms_attempted).length;
     const emailOk=rc.filter(r=>r.email_ok).length;
     const smsOk=rc.filter(r=>r.sms_ok).length;
     const failBits=rc.flatMap(r=>{
       const bits=[];
-      if(!r.email_ok&&(r.email||r.email_reason)) bits.push('Email: '+(r.email_detail||r.email_reason||'failed'));
-      if(!r.sms_ok&&(r.phone||r.sms_reason)) bits.push('SMS: '+(r.sms_detail||r.sms_reason||'failed'));
+      if(r.email_attempted&&!r.email_ok) bits.push('Email: '+(r.email_detail||r.email_reason||'failed'));
+      if(r.sms_attempted&&!r.sms_ok) bits.push('SMS: '+(r.sms_detail||r.sms_reason||'failed'));
       return bits;
     });
     const addr=data.address||'(address lookup pending)';
+    const chanSummary=[
+      wantEmail?`Email ${emailOk}/${emailTried||0}`:null,
+      wantSms?`SMS ${smsOk}/${smsTried||0}`:null,
+    ].filter(Boolean).join(' · ');
+    const anyOk=(wantEmail&&emailOk>0)||(wantSms&&smsOk>0);
     setStatus(
-      `<strong class="${(emailOk||smsOk)?'ok':'err'}">${eventType==='on_site'?'On site alert sent':'Safe on ground alert sent'}</strong><br>`+
+      `<strong class="${anyOk?'ok':'err'}">${eventType==='on_site'?'On site alert sent':'Safe on ground alert sent'}</strong><br>`+
       `${formatWhen(body.occurredAt)}<br>`+
       `${addr}<br>`+
       `GPS ${geo.lat.toFixed(6)}, ${geo.lng.toFixed(6)}<br>`+
-      `Email ${emailOk}/${rc.length} · SMS ${smsOk}/${rc.length}`+
+      chanSummary+
       (failBits.length?('<br><span class="err">'+failBits.join('<br>')+'</span>'):'')
     );
     toast(eventType==='on_site'?'Supervisors notified — on site':'Supervisors notified — safe on ground');
@@ -875,6 +915,27 @@ document.getElementById('workerName').value=localStorage.getItem(WORKER_KEY)||''
 document.getElementById('workerName').addEventListener('input',()=>{
   updateSafeButton();
   updateWorkerRoleHint();
+});
+try{
+  const ch=JSON.parse(localStorage.getItem(CHANNELS_KEY)||'{}');
+  // Default SMS on (works today); email off until domain is configured.
+  document.getElementById('chanEmail').checked=ch.email===true;
+  document.getElementById('chanSms').checked=ch.sms!==false;
+}catch(_){
+  document.getElementById('chanEmail').checked=false;
+  document.getElementById('chanSms').checked=true;
+}
+document.getElementById('chanEmail').addEventListener('change',()=>{
+  localStorage.setItem(CHANNELS_KEY,JSON.stringify({
+    email:document.getElementById('chanEmail').checked,
+    sms:document.getElementById('chanSms').checked,
+  }));
+});
+document.getElementById('chanSms').addEventListener('change',()=>{
+  localStorage.setItem(CHANNELS_KEY,JSON.stringify({
+    email:document.getElementById('chanEmail').checked,
+    sms:document.getElementById('chanSms').checked,
+  }));
 });
 fillWorkerDatalist();
 fillBuildingSelect('');
