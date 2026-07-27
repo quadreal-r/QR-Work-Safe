@@ -3,7 +3,7 @@
  *
  * Network-first, cache-fallback. Cross-origin API traffic is never cached.
  */
-const VERSION = 'v1.0.7';
+const VERSION = 'v1.0.8';
 const CACHE = 'worksafe-shell-' + VERSION;
 
 const SHELL = [

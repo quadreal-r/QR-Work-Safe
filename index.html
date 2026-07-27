@@ -137,22 +137,16 @@
   .status .warn{color:var(--amber)}
   .status .err{color:var(--bad)}
 
-  .tabs{display:flex;gap:8px;margin:4px 0 12px}
-  .tab{
-    flex:1;height:42px;border:1.5px solid var(--line-2);border-radius:11px;background:#fff;
-    font:inherit;font-weight:800;font-size:13px;color:var(--muted);cursor:pointer;
-  }
-  .tab.on{border-color:var(--qr-blue);background:var(--blue-soft);color:var(--qr-midnight)}
-
-  .log-item{padding:14px 0;border-bottom:1px solid var(--line)}
+  .log-item{padding:10px 0;border-bottom:1px solid var(--line)}
   .log-item:last-child{border-bottom:none}
-  .log-item .who{font-weight:800;color:var(--qr-midnight);font-size:15px}
-  .log-item .type{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;margin-left:8px}
+  .log-item .who{font-weight:800;color:var(--qr-midnight);font-size:14px}
+  .log-item .type{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:999px;margin-left:6px}
   .log-item .type.on_site{background:var(--amber-soft);color:var(--amber)}
   .log-item .type.safe_ground{background:var(--good-soft);color:var(--good)}
-  .log-item .when{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:4px}
-  .log-item .addr{font-size:13px;color:var(--ink);margin-top:6px;line-height:1.35}
-  .log-item .rcpts{font-size:12px;color:var(--faint);margin-top:6px}
+  .log-item .when{font-size:12px;color:var(--muted);font-weight:600;margin-top:3px}
+  .log-item .addr{font-size:12.5px;color:var(--ink);margin-top:4px;line-height:1.35}
+  .log-item .rcpts{font-size:11.5px;color:var(--faint);margin-top:4px}
+  #logsList{max-height:36vh;overflow:auto}
 
   .btn{height:var(--tap);border:1.5px solid var(--line-2);border-radius:12px;background:#fff;font:inherit;font-weight:800;font-size:14px;color:var(--qr-midnight);cursor:pointer;padding:0 14px}
   .btn.primary{background:var(--qr-blue);border-color:var(--qr-blue);color:#fff}
@@ -243,11 +237,6 @@
     <p class="sub">Notify supervisors when you arrive on site to climb, and again when you are safe on the ground.</p>
   </section>
 
-  <div class="tabs" role="tablist">
-    <button type="button" class="tab on" data-tab="checkin" id="tabCheckin">Check-in</button>
-    <button type="button" class="tab" data-tab="logs" id="tabLogs">Logs</button>
-  </div>
-
   <div id="viewCheckin">
     <div class="actions">
       <button type="button" class="btn-big btn-climb" id="btnOnSite">
@@ -303,22 +292,6 @@
       Sign in from Settings to send alerts. GPS is captured when you tap a button.
     </div>
   </div>
-
-  <div id="viewLogs" hidden>
-    <div class="card">
-      <h2>Filter by worker</h2>
-      <label class="field">
-        <span>Worker</span>
-        <select id="logWorkerFilter">
-          <option value="">All workers</option>
-        </select>
-      </label>
-      <button type="button" class="btn" id="refreshLogs">Refresh</button>
-    </div>
-    <div class="card" id="logsList">
-      <p class="empty">No events yet.</p>
-    </div>
-  </div>
 </main>
 
 <div class="gate" id="gate" hidden>
@@ -372,6 +345,20 @@
       </div>
 
       <div class="sec">
+        <h3>Logs</h3>
+        <label class="field" style="margin-bottom:8px">
+          <span>Filter by worker</span>
+          <select id="logWorkerFilter">
+            <option value="">All workers</option>
+          </select>
+        </label>
+        <button type="button" class="btn" id="refreshLogs" style="width:100%;margin-bottom:8px">Refresh</button>
+        <div id="logsList">
+          <p class="empty">No events yet.</p>
+        </div>
+      </div>
+
+      <div class="sec">
         <h3>Device</h3>
         <div class="rowbtns">
           <button type="button" class="btn" id="installBtn">Add to Home Screen</button>
@@ -401,8 +388,8 @@
 <script src="native-bridge.js"></script>
 <script src="roster-data.js"></script>
 <script>
-const APP_VER='v1.0.7';
-const BUILD=8;
+const APP_VER='v1.0.8';
+const BUILD=9;
 const CF_API='https://work-safe-api.quadreal-rpiwin.workers.dev';
 const TOKEN_KEY='worksafe_cf_session_token';
 const DEVICE_KEY='worksafe_device_v1';
@@ -988,19 +975,6 @@ document.getElementById('btnNearest').addEventListener('click',()=>useNearestBui
 document.getElementById('btnOnSite').addEventListener('click',()=>doCheckin('on_site'));
 document.getElementById('btnSafe').addEventListener('click',()=>doCheckin('safe_ground'));
 
-document.getElementById('tabCheckin').addEventListener('click',()=>{
-  document.getElementById('tabCheckin').classList.add('on');
-  document.getElementById('tabLogs').classList.remove('on');
-  document.getElementById('viewCheckin').hidden=false;
-  document.getElementById('viewLogs').hidden=true;
-});
-document.getElementById('tabLogs').addEventListener('click',async()=>{
-  document.getElementById('tabLogs').classList.add('on');
-  document.getElementById('tabCheckin').classList.remove('on');
-  document.getElementById('viewLogs').hidden=false;
-  document.getElementById('viewCheckin').hidden=true;
-  try{await loadLogs();}catch(e){toast(e.message||'Could not load logs');}
-});
 document.getElementById('refreshLogs').addEventListener('click',async()=>{
   try{await loadLogs();}catch(e){toast(e.message||'Could not load logs');}
 });
@@ -1011,6 +985,7 @@ document.getElementById('logWorkerFilter').addEventListener('change',async()=>{
 document.getElementById('settingsBtn').addEventListener('click',()=>{
   document.getElementById('settings').hidden=false;
   document.getElementById('deviceIdLine').textContent='Device · '+deviceId().slice(0,8);
+  loadLogs().catch(()=>{});
 });
 document.getElementById('settingsClose').addEventListener('click',()=>{
   document.getElementById('settings').hidden=true;
