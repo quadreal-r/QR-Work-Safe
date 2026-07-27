@@ -1,0 +1,37 @@
+{
+  "name": "work-safe-api",
+  "main": "src/index.js",
+  "account_id": "ed62b8514615e386084ffd47455ec775",
+  "compatibility_date": "2026-07-23",
+  "workers_dev": true,
+  "vars": {
+    "TOKEN_EPOCH": "1",
+    "SUPABASE_URL": "https://wyiymdtlncperqpwriuk.supabase.co",
+    "EMAIL_FROM": "worksafe@quadreal-rpiwin.workers.dev",
+    "EMAIL_FROM_NAME": "QuadReal Work Safe"
+  },
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
+  "ratelimits": [
+    {
+      "name": "LOGIN_LIMITER",
+      "namespace_id": "2001",
+      "simple": { "limit": 8, "period": 60 }
+    },
+    {
+      "name": "CHECKIN_LIMITER",
+      "namespace_id": "2002",
+      "simple": { "limit": 30, "period": 60 }
+    },
+    {
+      "name": "DATA_LIMITER",
+      "namespace_id": "2003",
+      "simple": { "limit": 120, "period": 60 }
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

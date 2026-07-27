@@ -1,0 +1,11 @@
+{
+  "name": "work-safe-tracker",
+  // Same Cloudflare account as RTU Audit / rtu-pictures.
+  "account_id": "ed62b8514615e386084ffd47455ec775",
+  "compatibility_date": "2026-07-23",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./www",
+    "not_found_handling": "single-page-application"
+  }
+}

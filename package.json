@@ -1,0 +1,31 @@
+{
+  "name": "qr-work-safe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "QuadReal Work Safe — ladder / site check-in with supervisor email + SMS alerts",
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "sync:version": "node scripts/sync-version.mjs",
+    "sync": "npm run build:web && npm run sync:version && npx cap sync",
+    "dev": "node scripts/dev.mjs",
+    "dev:android": "node scripts/dev.mjs android",
+    "dev:ios": "node scripts/dev.mjs ios",
+    "ship:web": "npm run build:web && npx wrangler deploy",
+    "ship:api": "npm --prefix cloudflare/work-safe-api run deploy"
+  },
+  "dependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/geolocation": "^8.0.0",
+    "@capacitor/ios": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "browser-sync": "^3.0.4",
+    "esbuild": "0.28.1",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.0.0"
+  }
+}
