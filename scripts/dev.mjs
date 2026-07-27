@@ -70,7 +70,7 @@ await new Promise((resolve, reject) => {
       notify: false,
       ui: false,
       ghostMode: false,
-      files: ['index.html'],
+      files: ['index.html', 'roster-data.js'],
       watch: true,
     },
     (err) => (err ? reject(err) : resolve())

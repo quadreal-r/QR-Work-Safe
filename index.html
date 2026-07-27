@@ -218,9 +218,26 @@
       <h2>Worker</h2>
       <label class="field">
         <span>Your name</span>
-        <input type="text" id="workerName" list="workerNames" autocomplete="name" placeholder="e.g. Jordan Lee" maxlength="80">
+        <input type="text" id="workerName" list="workerNames" autocomplete="name" placeholder="Select or type your name" maxlength="80">
         <datalist id="workerNames"></datalist>
       </label>
+      <p class="empty" id="workerRoleHint" style="margin-top:-4px"></p>
+    </div>
+
+    <div class="card">
+      <h2>Building / location</h2>
+      <label class="field">
+        <span>Search address</span>
+        <input type="search" id="buildingSearch" placeholder="Start typing an address…" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Building</span>
+        <select id="buildingSelect" class="mgr">
+          <option value="">Select building…</option>
+        </select>
+      </label>
+      <p class="empty" id="buildingMeta"></p>
+      <button type="button" class="btn" id="btnNearest" style="width:100%">Use nearest building (GPS)</button>
     </div>
 
     <div class="card">
@@ -232,7 +249,7 @@
     <div class="actions">
       <button type="button" class="btn-big btn-climb" id="btnOnSite">
         On site / climbing
-        <span class="hint">Sends GPS, address, date &amp; time</span>
+        <span class="hint">Sends GPS, building address, date &amp; time</span>
       </button>
       <button type="button" class="btn-big btn-safe" id="btnSafe" disabled>
         Safe on ground
@@ -308,6 +325,7 @@
         <p style="margin:0;font-size:12.5px;color:var(--muted);font-weight:600">Supervisors and watchers. Each check-in lets the worker pick who to notify.</p>
         <div id="contactsEditor"></div>
         <button type="button" class="btn" id="addContact">Add contact</button>
+        <button type="button" class="btn" id="importRosterContacts">Import roster phones</button>
         <button type="button" class="btn primary" id="saveContacts">Save contacts</button>
       </div>
 
@@ -339,15 +357,21 @@
 <div class="toast" id="toast" role="status"></div>
 
 <script src="native-bridge.js"></script>
+<script src="roster-data.js"></script>
 <script>
-const APP_VER='v1.0.1';
-const BUILD=2;
+const APP_VER='v1.0.2';
+const BUILD=3;
 const CF_API='https://work-safe-api.quadreal-rpiwin.workers.dev';
 const TOKEN_KEY='worksafe_cf_session_token';
 const DEVICE_KEY='worksafe_device_v1';
 const WORKER_KEY='worksafe_worker_name';
+const BUILDING_KEY='worksafe_building_address';
 const SELECTED_KEY='worksafe_selected_contacts';
 const SESSION_KEY='worksafe_open_session';
+
+const ROSTER=window.WORK_SAFE_ROSTER||{buildings:[],people:[]};
+const BUILDINGS=ROSTER.buildings||[];
+const PEOPLE=ROSTER.people||[];
 
 document.getElementById('verBadge').textContent=APP_VER;
 
@@ -488,6 +512,137 @@ function setStatus(html){
   document.getElementById('statusBox').innerHTML=html;
 }
 
+function haversineM(aLat,aLng,bLat,bLng){
+  const R=6371000;
+  const toRad=(d)=>d*Math.PI/180;
+  const dLat=toRad(bLat-aLat), dLng=toRad(bLng-aLng);
+  const lat1=toRad(aLat), lat2=toRad(bLat);
+  const h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+
+function findPerson(name){
+  const key=(name||'').trim().toLowerCase();
+  if(!key) return null;
+  return PEOPLE.find(p=>p.name.toLowerCase()===key)||null;
+}
+
+function selectedBuilding(){
+  const addr=document.getElementById('buildingSelect').value;
+  if(!addr) return null;
+  return BUILDINGS.find(b=>b.address===addr)||null;
+}
+
+function updateWorkerRoleHint(){
+  const p=findPerson(document.getElementById('workerName').value);
+  const el=document.getElementById('workerRoleHint');
+  if(!p){ el.textContent=''; return; }
+  el.textContent=(p.roles||[]).join(' · ');
+}
+
+function updateBuildingMeta(){
+  const b=selectedBuilding();
+  const el=document.getElementById('buildingMeta');
+  if(!b){ el.textContent=BUILDINGS.length+' buildings loaded from roster'; return; }
+  const bits=[b.portfolio,b.cluster,b.manager?('PM: '+b.manager):''].filter(Boolean);
+  el.textContent=bits.join(' · ');
+}
+
+function fillBuildingSelect(filter){
+  const sel=document.getElementById('buildingSelect');
+  const q=(filter||'').trim().toLowerCase();
+  const cur=sel.value||localStorage.getItem(BUILDING_KEY)||'';
+  const list=q
+    ? BUILDINGS.filter(b=>
+        b.address.toLowerCase().includes(q)||
+        (b.portfolio||'').toLowerCase().includes(q)||
+        (b.cluster||'').toLowerCase().includes(q)||
+        (b.manager||'').toLowerCase().includes(q)||
+        (b.bu||'').includes(q)
+      )
+    : BUILDINGS;
+  sel.innerHTML='<option value="">Select building…</option>';
+  for(const b of list){
+    const opt=document.createElement('option');
+    opt.value=b.address;
+    opt.textContent=b.address+(b.bu?' · BU '+b.bu:'');
+    sel.appendChild(opt);
+  }
+  if(cur && [...sel.options].some(o=>o.value===cur)) sel.value=cur;
+  updateBuildingMeta();
+}
+
+function fillWorkerDatalist(){
+  const dl=document.getElementById('workerNames');
+  dl.innerHTML='';
+  for(const p of PEOPLE){
+    const opt=document.createElement('option');
+    opt.value=p.name;
+    opt.label=(p.roles||[]).join(', ');
+    dl.appendChild(opt);
+  }
+}
+
+function nearestBuilding(lat,lng){
+  let best=null, bestD=Infinity;
+  for(const b of BUILDINGS){
+    if(b.lat==null||b.lng==null) continue;
+    const d=haversineM(lat,lng,b.lat,b.lng);
+    if(d<bestD){ bestD=d; best=b; }
+  }
+  return best?{building:best, meters:bestD}:null;
+}
+
+async function useNearestBuilding(){
+  try{
+    setBusy(true);
+    setStatus('Getting GPS to find nearest building…');
+    const geo=await getPosition();
+    const hit=nearestBuilding(geo.lat,geo.lng);
+    if(!hit){
+      toast('No building coordinates in roster');
+      return;
+    }
+    document.getElementById('buildingSearch').value='';
+    fillBuildingSelect('');
+    document.getElementById('buildingSelect').value=hit.building.address;
+    localStorage.setItem(BUILDING_KEY,hit.building.address);
+    updateBuildingMeta();
+    const km=(hit.meters/1000).toFixed(hit.meters<1000?2:1);
+    setStatus(`Nearest: <strong>${hit.building.address}</strong> (~${km} km from GPS)`);
+    toast('Building selected: '+hit.building.address);
+  }catch(e){
+    toast(e.message||'GPS failed');
+  }finally{
+    setBusy(false);
+  }
+}
+
+function importRosterIntoContactsEditor(){
+  const existing=readContactsEditor();
+  const byPhone=new Set(existing.map(c=>(c.phone||'').replace(/\D/g)).filter(Boolean));
+  const byName=new Set(existing.map(c=>(c.name||'').trim().toLowerCase()).filter(Boolean));
+  let added=0;
+  for(const p of PEOPLE){
+    const phone=(p.phones&&p.phones[0])||'';
+    const key=p.name.toLowerCase();
+    if(byName.has(key)) continue;
+    if(phone && byPhone.has(phone.replace(/\D/g))) continue;
+    existing.push({
+      name:p.name,
+      email:'',
+      phone:phone,
+      active:true,
+    });
+    byName.add(key);
+    if(phone) byPhone.add(phone.replace(/\D/g));
+    added++;
+  }
+  contacts=existing;
+  renderContactsEditor();
+  toast(added?(`Added ${added} roster people — fill emails, then Save`):'Roster already in contacts');
+}
+
 function getPosition(){
   return new Promise((resolve,reject)=>{
     if(!navigator.geolocation){
@@ -576,7 +731,14 @@ async function doCheckin(eventType){
     document.getElementById('workerName').focus();
     return;
   }
+  const building=selectedBuilding();
+  if(!building){
+    toast('Select a building address');
+    document.getElementById('buildingSelect').focus();
+    return;
+  }
   localStorage.setItem(WORKER_KEY,workerName);
+  localStorage.setItem(BUILDING_KEY,building.address);
   if(!selected.size){
     toast('Select at least one contact');
     return;
@@ -597,11 +759,18 @@ async function doCheckin(eventType){
   try{
     const geo=await getPosition();
     setStatus(`GPS locked (${geo.lat.toFixed(5)}, ${geo.lng.toFixed(5)}). Sending alerts…`);
+    const person=findPerson(workerName);
+    const roleBit=person&&person.roles&&person.roles.length?(person.roles.join(', ')):'';
+    const addressParts=[building.address];
+    if(building.portfolio) addressParts.push(building.portfolio);
+    if(building.cluster) addressParts.push(building.cluster);
+    if(roleBit) addressParts.push('Role: '+roleBit);
     const body={
       workerName,
       eventType,
       lat:geo.lat,
       lng:geo.lng,
+      address:addressParts.join(' · '),
       occurredAt:new Date().toISOString(),
       recipientIds:[...selected],
       deviceId:deviceId(),
@@ -696,7 +865,28 @@ async function loadLogs(){
 
 /* ---- UI wiring ---- */
 document.getElementById('workerName').value=localStorage.getItem(WORKER_KEY)||'';
-document.getElementById('workerName').addEventListener('input',updateSafeButton);
+document.getElementById('workerName').addEventListener('input',()=>{
+  updateSafeButton();
+  updateWorkerRoleHint();
+});
+fillWorkerDatalist();
+fillBuildingSelect('');
+const savedBuilding=localStorage.getItem(BUILDING_KEY)||'';
+if(savedBuilding) document.getElementById('buildingSelect').value=savedBuilding;
+updateWorkerRoleHint();
+updateBuildingMeta();
+
+document.getElementById('buildingSearch').addEventListener('input',(e)=>{
+  fillBuildingSelect(e.target.value);
+});
+document.getElementById('buildingSelect').addEventListener('change',()=>{
+  const v=document.getElementById('buildingSelect').value;
+  if(v) localStorage.setItem(BUILDING_KEY,v);
+  else localStorage.removeItem(BUILDING_KEY);
+  updateBuildingMeta();
+});
+document.getElementById('btnNearest').addEventListener('click',()=>useNearestBuilding());
+
 document.getElementById('btnOnSite').addEventListener('click',()=>doCheckin('on_site'));
 document.getElementById('btnSafe').addEventListener('click',()=>doCheckin('safe_ground'));
 
@@ -768,6 +958,9 @@ document.getElementById('cfLogout').addEventListener('click',()=>{
 document.getElementById('addContact').addEventListener('click',()=>{
   contacts.push({name:'',email:'',phone:'',active:true});
   renderContactsEditor();
+});
+document.getElementById('importRosterContacts').addEventListener('click',()=>{
+  importRosterIntoContactsEditor();
 });
 document.getElementById('saveContacts').addEventListener('click',async()=>{
   if(!getToken()){toast('Sign in first');return;}

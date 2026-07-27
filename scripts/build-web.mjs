@@ -23,6 +23,11 @@ console.log('[build:web] copied index.html');
 copyFileSync(join(root, 'manifest.webmanifest'), join(www, 'manifest.webmanifest'));
 console.log('[build:web] copied manifest.webmanifest');
 
+if (existsSync(join(root, 'roster-data.js'))) {
+  copyFileSync(join(root, 'roster-data.js'), join(www, 'roster-data.js'));
+  console.log('[build:web] copied roster-data.js');
+}
+
 const icons = join(root, 'icons');
 if (existsSync(icons)) {
   mkdirSync(join(www, 'icons'), { recursive: true });
