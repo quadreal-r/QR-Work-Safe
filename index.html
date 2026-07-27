@@ -115,15 +115,25 @@
     background:#fff;font-size:14px;font-weight:700;color:var(--qr-midnight);margin-bottom:8px;
   }
   .building-picked .hint{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-top:2px}
+  .contacts{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow:auto}
   .contact{
     display:flex;align-items:flex-start;gap:12px;padding:12px;border:1.5px solid var(--line-2);
     border-radius:12px;cursor:pointer;background:#fff;text-align:left;width:100%;font:inherit;
   }
   .contact.on{border-color:var(--qr-blue);background:var(--blue-soft)}
-  .contact .ck{width:22px;height:22px;border-radius:6px;border:2px solid var(--line-2);flex:0 0 auto;margin-top:1px;display:grid;place-items:center}
+  .contact .ck{
+    width:22px;height:22px;border-radius:6px;border:2px solid var(--line-2);flex:0 0 auto;
+    margin-top:1px;display:inline-flex;align-items:center;justify-content:center;
+    line-height:1;font-size:13px;font-weight:800;box-sizing:border-box;
+  }
   .contact.on .ck{border-color:var(--qr-blue);background:var(--qr-blue);color:#fff}
-  .contact .nm{font-weight:800;font-size:15px;color:var(--qr-midnight)}
-  .contact .meta{font-size:12px;color:var(--muted);font-weight:600;margin-top:2px;word-break:break-all}
+  .contact.on .ck::before{
+    content:"✓";display:block;line-height:1;transform:translateY(-1px);
+  }
+  .contact .body{min-width:0;flex:1}
+  .contact .nm{font-weight:800;font-size:15px;color:var(--qr-midnight);line-height:1.25}
+  .contact .meta{font-size:12px;color:var(--muted);font-weight:600;margin-top:3px;line-height:1.35}
+  .contact .meta div{overflow-wrap:anywhere;word-break:normal}
   .empty{font-size:13px;color:var(--muted);font-weight:600;padding:8px 0}
   .chan-row{display:flex;gap:8px;margin-bottom:12px}
   .chan{
@@ -413,8 +423,8 @@
 <script src="native-bridge.js"></script>
 <script src="roster-data.js"></script>
 <script>
-const APP_VER='v1.0.12';
-const BUILD=13;
+const APP_VER='v1.0.13';
+const BUILD=14;
 const CF_API='https://work-safe-api.quadreal-rpiwin.workers.dev';
 const TOKEN_KEY='worksafe_cf_session_token';
 const DEVICE_KEY='worksafe_device_v1';
@@ -527,10 +537,23 @@ function renderContactsPick(){
     const btn=document.createElement('button');
     btn.type='button';
     btn.className='contact'+(on?' on':'');
-    btn.innerHTML=`<span class="ck">${on?'✓':''}</span><span><div class="nm"></div><div class="meta"></div></span>`;
+    btn.innerHTML=`<span class="ck" aria-hidden="true"></span><span class="body"><div class="nm"></div><div class="meta"></div></span>`;
     btn.querySelector('.nm').textContent=c.name;
-    const bits=[c.email,c.phone].filter(Boolean);
-    btn.querySelector('.meta').textContent=bits.join(' · ')||'No channel';
+    const meta=btn.querySelector('.meta');
+    meta.innerHTML='';
+    if(c.email){
+      const row=document.createElement('div');
+      row.textContent=c.email;
+      meta.appendChild(row);
+    }
+    if(c.phone){
+      const row=document.createElement('div');
+      row.textContent=c.phone;
+      meta.appendChild(row);
+    }
+    if(!c.email&&!c.phone){
+      meta.textContent='No channel';
+    }
     btn.addEventListener('click',()=>{
       if(selected.has(c.id)) selected.delete(c.id);
       else selected.add(c.id);
