@@ -203,7 +203,8 @@ async function supabaseCall(env, path, init = {}) {
     },
   });
   if (!res.ok) {
-    return { error: res.status, detail: await res.text().catch(() => "") };
+    const detail = await res.text().catch(() => "");
+    return { error: res.status, detail };
   }
   const text = await res.text();
   if (!text) return { data: null };
@@ -212,6 +213,14 @@ async function supabaseCall(env, path, init = {}) {
   } catch {
     return { error: 502 };
   }
+}
+
+function supabaseErrorMessage(result, fallback) {
+  if (!result || !result.error) return fallback;
+  if (result.error === 401 || result.error === 403) {
+    return "Database key rejected — set SUPABASE_SERVICE_KEY to the service_role / sb_secret key";
+  }
+  return fallback;
 }
 
 function normalizeWorkerName(name) {
@@ -418,7 +427,13 @@ async function handleContactsGet(request, env) {
     env,
     "work_safe_contacts?select=id,name,email,phone,active,updated_at&order=name.asc"
   );
-  if (error) return json(request, { ok: false, error: "Contacts unavailable" }, 502);
+  if (error) {
+    return json(
+      request,
+      { ok: false, error: supabaseErrorMessage({ error }, "Contacts unavailable") },
+      502
+    );
+  }
   return json(request, { ok: true, contacts: Array.isArray(data) ? data : [] });
 }
 
@@ -451,7 +466,13 @@ async function handleContactsPut(request, env, deviceId) {
     env,
     "work_safe_contacts?select=id"
   );
-  if (listErr) return json(request, { ok: false, error: "Contacts unavailable" }, 502);
+  if (listErr) {
+    return json(
+      request,
+      { ok: false, error: supabaseErrorMessage({ error: listErr }, "Contacts unavailable") },
+      502
+    );
+  }
   const keep = new Set(cleaned.map((c) => c.id));
   const toDelete = (Array.isArray(existing) ? existing : [])
     .map((r) => r.id)
@@ -481,7 +502,13 @@ async function handleContactsPut(request, env, deviceId) {
       prefer: "resolution=merge-duplicates,return=representation",
       body: JSON.stringify(rows),
     });
-    if (upErr) return json(request, { ok: false, error: "Could not save contacts" }, 502);
+    if (upErr) {
+      return json(
+        request,
+        { ok: false, error: supabaseErrorMessage({ error: upErr }, "Could not save contacts") },
+        502
+      );
+    }
   }
 
   return handleContactsGet(request, env);
