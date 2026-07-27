@@ -14,6 +14,13 @@ Same architecture as RTU QR Audit: vanilla SPA + Capacitor + Cloudflare Worker +
 | `npm run ship:web` | Deploy tracker site to Cloudflare |
 | `npm run ship:api` | Deploy `work-safe-api` Worker |
 
+## Installing from a link (Home Screen shortcut)
+
+- **Cloudflare:** after `npm run ship:web` → `https://work-safe-tracker.quadreal-rpiwin.workers.dev`
+- **GitHub Pages:** `https://quadreal-r.github.io/QR-Work-Safe/` (auto-deploys from `main` via `.github/workflows/pages.yml`)
+
+Anyone with the URL can add a Home Screen shortcut. Open **Settings → Add To Home Screen**.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) on every push/PR to `main`:
