@@ -1,0 +1,165 @@
+# CI for QR Work Safe
+# Secret scan, Worker dry-run, asset parity, and version-bump checks.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  wrangler-dry-run:
+    name: Worker dry-run deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare/work-safe-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cloudflare/work-safe-api/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Wrangler deploy --dry-run
+        run: npx wrangler deploy --dry-run
+
+  asset-parity:
+    name: Web asset parity (root ↔ www ↔ android)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build www and copy into Capacitor shells
+        run: |
+          npm run build:web
+          npx cap copy
+
+      - name: Compare shell asset hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          for f in index.html native-bridge.js manifest.webmanifest sw.js; do
+            root_hash=$(sha256sum "$f" | awk '{print $1}')
+            www_hash=$(sha256sum "www/$f" | awk '{print $1}')
+            android_hash=$(sha256sum "android/app/src/main/assets/public/$f" | awk '{print $1}')
+            echo "$f"
+            echo "  root:    $root_hash"
+            echo "  www:     $www_hash"
+            echo "  android: $android_hash"
+            if [ "$root_hash" != "$www_hash" ] || [ "$root_hash" != "$android_hash" ]; then
+              # native-bridge.js is esbuild-bundled into www/; root ESM source will differ.
+              if [ "$f" = "native-bridge.js" ]; then
+                if [ "$www_hash" != "$android_hash" ]; then
+                  echo "  FAIL: www and android copies of bundled native-bridge.js differ" >&2
+                  fail=1
+                else
+                  echo "  OK (bundled www ↔ android; root is ESM source)"
+                fi
+                continue
+              fi
+              echo "  FAIL: copies are not byte-identical to root $f" >&2
+              fail=1
+            else
+              echo "  OK"
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "" >&2
+            echo "Re-run npm run sync after editing root assets (build:web + cap sync)." >&2
+            exit 1
+          fi
+
+  version-bump:
+    name: APP_VER / BUILD bump when index.html changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require APP_VER and BUILD change if index.html changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          if ! git diff --name-only "$BASE"..."$HEAD" | grep -qx 'index.html'; then
+            echo "index.html unchanged — version bump check skipped."
+            exit 0
+          fi
+
+          extract() {
+            git show "$1:index.html" 2>/dev/null | grep -E "^const $2=" | head -n1 || true
+          }
+
+          base_ver=$(extract "$BASE" "APP_VER")
+          head_ver=$(extract "$HEAD" "APP_VER")
+          base_build=$(extract "$BASE" "BUILD")
+          head_build=$(extract "$HEAD" "BUILD")
+
+          echo "Base APP_VER:  ${base_ver:-<missing>}"
+          echo "Head APP_VER:  ${head_ver:-<missing>}"
+          echo "Base BUILD:    ${base_build:-<missing>}"
+          echo "Head BUILD:    ${head_build:-<missing>}"
+
+          if [ -z "$head_ver" ] || [ -z "$head_build" ]; then
+            echo "FAIL: could not find APP_VER / BUILD in head index.html" >&2
+            exit 1
+          fi
+
+          if [ "$base_ver" = "$head_ver" ] && [ "$base_build" = "$head_build" ]; then
+            echo "FAIL: index.html changed but APP_VER and BUILD did not." >&2
+            exit 1
+          fi
+
+          echo "OK — version identifiers changed with index.html."

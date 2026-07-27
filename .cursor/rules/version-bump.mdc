@@ -1,0 +1,18 @@
+---
+description: When editing index.html app logic or UI, bump APP_VER and BUILD together
+globs: index.html
+alwaysApply: false
+---
+
+# Version bump
+
+`index.html` is the single source of truth for:
+
+```js
+const APP_VER='vX.Y.Z';
+const BUILD=N;
+```
+
+If you change app behavior or UI in `index.html`, bump **both** `APP_VER` and `BUILD` in the same change. CI fails PRs that touch `index.html` without a version bump.
+
+After bumping, run `npm run sync` before shipping native builds.

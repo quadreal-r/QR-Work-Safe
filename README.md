@@ -14,6 +14,17 @@ Same architecture as RTU QR Audit: vanilla SPA + Capacitor + Cloudflare Worker +
 | `npm run ship:web` | Deploy tracker site to Cloudflare |
 | `npm run ship:api` | Deploy `work-safe-api` Worker |
 
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) on every push/PR to `main`:
+
+- Gitleaks secret scan
+- `work-safe-api` Wrangler dry-run
+- Web asset parity (root ↔ `www/` ↔ Android after `build:web` + `cap copy`)
+- PR-only: require `APP_VER` / `BUILD` bump when `index.html` changes
+
+Dependabot keeps Gradle, npm, and Actions weekly.
+
 ## First-time setup
 
 ```bash
