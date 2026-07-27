@@ -144,7 +144,8 @@
   }
   .btn-big:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
   .btn-big .hint{font-size:12px;font-weight:600;opacity:.9}
-  .btn-climb{background:linear-gradient(135deg,var(--amber),#A86E10)}
+  .btn-climb{background:linear-gradient(135deg,#FFD400,#F5C400);color:#173073}
+  .btn-climb .hint{opacity:.85;color:#173073}
   .btn-safe{background:linear-gradient(135deg,var(--good),#157A52)}
   .btn-safe:disabled{background:var(--line-2);color:var(--muted)}
 
@@ -412,8 +413,8 @@
 <script src="native-bridge.js"></script>
 <script src="roster-data.js"></script>
 <script>
-const APP_VER='v1.0.11';
-const BUILD=12;
+const APP_VER='v1.0.12';
+const BUILD=13;
 const CF_API='https://work-safe-api.quadreal-rpiwin.workers.dev';
 const TOKEN_KEY='worksafe_cf_session_token';
 const DEVICE_KEY='worksafe_device_v1';
