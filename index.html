@@ -101,7 +101,24 @@
   input[type=search]::-webkit-search-cancel-button{display:none}
   input:focus,select:focus{outline:none;border-color:var(--qr-blue);box-shadow:0 0 0 4px var(--blue-soft)}
 
-  .contacts{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow:auto}
+  .building-results{
+    display:none;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;
+    max-height:220px;overflow:auto;margin:-4px 0 12px;box-shadow:0 10px 24px -16px rgba(23,48,115,.35);
+  }
+  .building-results.open{display:block}
+  .building-results button{
+    display:block;width:100%;text-align:left;padding:10px 12px;border:0;border-bottom:1px solid var(--line);
+    background:#fff;font:inherit;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;
+  }
+  .building-results button:last-child{border-bottom:0}
+  .building-results button:hover,.building-results button:focus{background:var(--blue-soft);outline:none}
+  .building-results .meta{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin-top:2px}
+  .building-results .empty-row{padding:12px;font-size:13px;font-weight:600;color:var(--muted)}
+  .building-picked{
+    min-height:var(--tap);border:1.5px solid var(--line-2);border-radius:12px;padding:10px 14px;
+    background:#fff;font-size:14px;font-weight:700;color:var(--qr-midnight);margin-bottom:8px;
+  }
+  .building-picked .hint{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-top:2px}
   .contact{
     display:flex;align-items:flex-start;gap:12px;padding:12px;border:1.5px solid var(--line-2);
     border-radius:12px;cursor:pointer;background:#fff;text-align:left;width:100%;font:inherit;
@@ -276,14 +293,20 @@
         <span>Search address</span>
         <input type="text" id="buildingSearch" name="building-address-search" placeholder="Start typing an address…"
           autocomplete="street-address" autocorrect="off" autocapitalize="off" spellcheck="false"
-          inputmode="search" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+          inputmode="search" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"
+          role="combobox" aria-expanded="false" aria-controls="buildingResults" aria-autocomplete="list">
       </label>
-      <label class="field">
-        <span>Building</span>
-        <select id="buildingSelect" class="mgr">
+      <div id="buildingResults" class="building-results" role="listbox"></div>
+      <div class="field" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:700;color:var(--qr-midnight)">Building</span>
+        <div class="building-picked" id="buildingPicked">
+          No building selected
+          <span class="hint">Search above or use nearest building</span>
+        </div>
+        <select id="buildingSelect" hidden aria-hidden="true">
           <option value="">Select building…</option>
         </select>
-      </label>
+      </div>
       <p class="empty" id="buildingMeta"></p>
       <button type="button" class="btn" id="btnNearest" style="width:100%">Use nearest building (GPS)</button>
     </div>
@@ -399,8 +422,8 @@
 <script src="native-bridge.js"></script>
 <script src="roster-data.js"></script>
 <script>
-const APP_VER='v1.0.9';
-const BUILD=10;
+const APP_VER='v1.0.10';
+const BUILD=11;
 const CF_API='https://work-safe-api.quadreal-rpiwin.workers.dev';
 const TOKEN_KEY='worksafe_cf_session_token';
 const DEVICE_KEY='worksafe_device_v1';
@@ -584,32 +607,111 @@ function updateWorkerRoleHint(){
 function updateBuildingMeta(){
   const b=selectedBuilding();
   const el=document.getElementById('buildingMeta');
-  if(!b){ el.textContent=BUILDINGS.length+' buildings loaded from roster'; return; }
+  const picked=document.getElementById('buildingPicked');
+  if(!b){
+    el.textContent=BUILDINGS.length+' buildings loaded from roster';
+    picked.innerHTML='No building selected<span class="hint">Search above or use nearest building</span>';
+    return;
+  }
   const bits=[b.portfolio,b.cluster,b.manager?('PM: '+b.manager):''].filter(Boolean);
   el.textContent=bits.join(' · ');
+  picked.innerHTML='';
+  picked.appendChild(document.createTextNode(b.address));
+  const hint=document.createElement('span');
+  hint.className='hint';
+  hint.textContent=bits.join(' · ')||(b.bu?('BU '+b.bu):'Selected');
+  picked.appendChild(hint);
+}
+
+function filterBuildings(filter){
+  const q=(filter||'').trim().toLowerCase();
+  if(!q) return BUILDINGS.slice();
+  return BUILDINGS.filter(b=>
+    b.address.toLowerCase().includes(q)||
+    (b.portfolio||'').toLowerCase().includes(q)||
+    (b.cluster||'').toLowerCase().includes(q)||
+    (b.manager||'').toLowerCase().includes(q)||
+    String(b.bu||'').includes(q)
+  );
 }
 
 function fillBuildingSelect(filter){
   const sel=document.getElementById('buildingSelect');
-  const q=(filter||'').trim().toLowerCase();
   const cur=sel.value||localStorage.getItem(BUILDING_KEY)||'';
-  const list=q
-    ? BUILDINGS.filter(b=>
-        b.address.toLowerCase().includes(q)||
-        (b.portfolio||'').toLowerCase().includes(q)||
-        (b.cluster||'').toLowerCase().includes(q)||
-        (b.manager||'').toLowerCase().includes(q)||
-        (b.bu||'').includes(q)
-      )
-    : BUILDINGS;
+  const list=filterBuildings(filter);
   sel.innerHTML='<option value="">Select building…</option>';
-  for(const b of list){
+  for(const b of list.length?list:BUILDINGS){
     const opt=document.createElement('option');
     opt.value=b.address;
     opt.textContent=b.address+(b.bu?' · BU '+b.bu:'');
     sel.appendChild(opt);
   }
+  // Keep full roster in select so a saved address always resolves.
+  if(list.length && list.length!==BUILDINGS.length){
+    for(const b of BUILDINGS){
+      if([...sel.options].some(o=>o.value===b.address)) continue;
+      const opt=document.createElement('option');
+      opt.value=b.address;
+      opt.textContent=b.address+(b.bu?' · BU '+b.bu:'');
+      sel.appendChild(opt);
+    }
+  }
   if(cur && [...sel.options].some(o=>o.value===cur)) sel.value=cur;
+  updateBuildingMeta();
+}
+
+function renderBuildingResults(filter){
+  const box=document.getElementById('buildingResults');
+  const inp=document.getElementById('buildingSearch');
+  const q=(filter||'').trim();
+  if(!q){
+    box.classList.remove('open');
+    box.innerHTML='';
+    inp.setAttribute('aria-expanded','false');
+    return;
+  }
+  const list=filterBuildings(q).slice(0,40);
+  box.innerHTML='';
+  if(!list.length){
+    const empty=document.createElement('div');
+    empty.className='empty-row';
+    empty.textContent='No buildings match “'+q+'”';
+    box.appendChild(empty);
+    box.classList.add('open');
+    inp.setAttribute('aria-expanded','true');
+    return;
+  }
+  for(const b of list){
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.setAttribute('role','option');
+    btn.dataset.address=b.address;
+    const meta=[b.portfolio,b.cluster,b.bu?('BU '+b.bu):''].filter(Boolean).join(' · ');
+    btn.innerHTML='<span></span>'+(meta?'<span class="meta"></span>':'');
+    btn.querySelector('span').textContent=b.address;
+    const m=btn.querySelector('.meta');
+    if(m) m.textContent=meta;
+    btn.addEventListener('click',()=>pickBuilding(b.address));
+    box.appendChild(btn);
+  }
+  box.classList.add('open');
+  inp.setAttribute('aria-expanded','true');
+}
+
+function pickBuilding(address){
+  const sel=document.getElementById('buildingSelect');
+  if(![...sel.options].some(o=>o.value===address)){
+    const opt=document.createElement('option');
+    opt.value=address;
+    opt.textContent=address;
+    sel.appendChild(opt);
+  }
+  sel.value=address;
+  localStorage.setItem(BUILDING_KEY,address);
+  document.getElementById('buildingSearch').value=address;
+  document.getElementById('buildingResults').classList.remove('open');
+  document.getElementById('buildingResults').innerHTML='';
+  document.getElementById('buildingSearch').setAttribute('aria-expanded','false');
   updateBuildingMeta();
 }
 
@@ -644,11 +746,9 @@ async function useNearestBuilding(){
       toast('No building coordinates in roster');
       return;
     }
-    document.getElementById('buildingSearch').value='';
+    document.getElementById('buildingSearch').value=hit.building.address;
     fillBuildingSelect('');
-    document.getElementById('buildingSelect').value=hit.building.address;
-    localStorage.setItem(BUILDING_KEY,hit.building.address);
-    updateBuildingMeta();
+    pickBuilding(hit.building.address);
     const km=(hit.meters/1000).toFixed(hit.meters<1000?2:1);
     setStatus(`Nearest: <strong>${hit.building.address}</strong> (~${km} km from GPS)`);
     toast('Building selected: '+hit.building.address);
@@ -776,7 +876,7 @@ async function doCheckin(eventType){
   const building=selectedBuilding();
   if(!building){
     toast('Select a building address');
-    document.getElementById('buildingSelect').focus();
+    document.getElementById('buildingSearch').focus();
     return;
   }
   localStorage.setItem(WORKER_KEY,workerName);
@@ -968,18 +1068,32 @@ document.getElementById('chanSms').addEventListener('change',()=>{
 fillWorkerDatalist();
 fillBuildingSelect('');
 const savedBuilding=localStorage.getItem(BUILDING_KEY)||'';
-if(savedBuilding) document.getElementById('buildingSelect').value=savedBuilding;
+if(savedBuilding) pickBuilding(savedBuilding);
+else updateBuildingMeta();
 updateWorkerRoleHint();
-updateBuildingMeta();
 
 document.getElementById('buildingSearch').addEventListener('input',(e)=>{
   fillBuildingSelect(e.target.value);
+  renderBuildingResults(e.target.value);
+});
+document.getElementById('buildingSearch').addEventListener('focus',(e)=>{
+  if((e.target.value||'').trim()) renderBuildingResults(e.target.value);
+});
+document.addEventListener('click',(e)=>{
+  const box=document.getElementById('buildingResults');
+  const inp=document.getElementById('buildingSearch');
+  if(!box.contains(e.target) && e.target!==inp){
+    box.classList.remove('open');
+    inp.setAttribute('aria-expanded','false');
+  }
 });
 document.getElementById('buildingSelect').addEventListener('change',()=>{
   const v=document.getElementById('buildingSelect').value;
-  if(v) localStorage.setItem(BUILDING_KEY,v);
-  else localStorage.removeItem(BUILDING_KEY);
-  updateBuildingMeta();
+  if(v) pickBuilding(v);
+  else{
+    localStorage.removeItem(BUILDING_KEY);
+    updateBuildingMeta();
+  }
 });
 document.getElementById('btnNearest').addEventListener('click',()=>useNearestBuilding());
 
