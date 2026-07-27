@@ -367,6 +367,26 @@ async function sendEmail(env, to, subject, html, text) {
   }
 }
 
+function telnyxReady(env) {
+  return (
+    typeof env.TELNYX_API_KEY === "string" &&
+    env.TELNYX_API_KEY.length > 8 &&
+    typeof env.TELNYX_FROM_NUMBER === "string" &&
+    env.TELNYX_FROM_NUMBER.startsWith("+")
+  );
+}
+
+function plivoReady(env) {
+  return (
+    typeof env.PLIVO_AUTH_ID === "string" &&
+    env.PLIVO_AUTH_ID.length > 0 &&
+    typeof env.PLIVO_AUTH_TOKEN === "string" &&
+    env.PLIVO_AUTH_TOKEN.length > 0 &&
+    typeof env.PLIVO_FROM_NUMBER === "string" &&
+    env.PLIVO_FROM_NUMBER.startsWith("+")
+  );
+}
+
 function twilioReady(env) {
   return (
     typeof env.TWILIO_ACCOUNT_SID === "string" &&
@@ -378,9 +398,61 @@ function twilioReady(env) {
   );
 }
 
-async function sendSms(env, to, body) {
-  if (!to) return { ok: false, reason: "no_phone" };
-  if (!twilioReady(env)) return { ok: false, reason: "sms_not_configured" };
+/** Prefer Telnyx, then Plivo, then Twilio — whichever secrets are present. */
+function smsProvider(env) {
+  if (telnyxReady(env)) return "telnyx";
+  if (plivoReady(env)) return "plivo";
+  if (twilioReady(env)) return "twilio";
+  return null;
+}
+
+async function sendSmsTelnyx(env, to, body) {
+  const res = await fetch("https://api.telnyx.com/v2/messages", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.TELNYX_API_KEY}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      from: env.TELNYX_FROM_NUMBER,
+      to,
+      text: body.slice(0, 1500),
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    return { ok: false, reason: `telnyx_${res.status}`, detail: detail.slice(0, 200) };
+  }
+  return { ok: true, provider: "telnyx" };
+}
+
+async function sendSmsPlivo(env, to, body) {
+  const authId = env.PLIVO_AUTH_ID;
+  const url = `https://api.plivo.com/v1/Account/${encodeURIComponent(authId)}/Message/`;
+  const auth = btoa(`${authId}:${env.PLIVO_AUTH_TOKEN}`);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      src: env.PLIVO_FROM_NUMBER,
+      dst: to,
+      text: body.slice(0, 1500),
+    }),
+  });
+  // Plivo returns 202 on accept.
+  if (!res.ok && res.status !== 202) {
+    const detail = await res.text().catch(() => "");
+    return { ok: false, reason: `plivo_${res.status}`, detail: detail.slice(0, 200) };
+  }
+  return { ok: true, provider: "plivo" };
+}
+
+async function sendSmsTwilio(env, to, body) {
   const sid = env.TWILIO_ACCOUNT_SID;
   const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
   const auth = btoa(`${sid}:${env.TWILIO_AUTH_TOKEN}`);
@@ -389,20 +461,29 @@ async function sendSms(env, to, body) {
     From: env.TWILIO_FROM_NUMBER,
     Body: body.slice(0, 1500),
   });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form.toString(),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    return { ok: false, reason: `twilio_${res.status}`, detail: detail.slice(0, 200) };
+  }
+  return { ok: true, provider: "twilio" };
+}
+
+async function sendSms(env, to, body) {
+  if (!to) return { ok: false, reason: "no_phone" };
+  const provider = smsProvider(env);
+  if (!provider) return { ok: false, reason: "sms_not_configured" };
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form.toString(),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      return { ok: false, reason: `twilio_${res.status}`, detail: detail.slice(0, 200) };
-    }
-    return { ok: true };
+    if (provider === "telnyx") return await sendSmsTelnyx(env, to, body);
+    if (provider === "plivo") return await sendSmsPlivo(env, to, body);
+    return await sendSmsTwilio(env, to, body);
   } catch (e) {
     return { ok: false, reason: (e && e.message) || "sms_failed" };
   }
@@ -664,7 +745,8 @@ export default {
         ok: true,
         service: "work-safe-api",
         email: !!(env.EMAIL && typeof env.EMAIL.send === "function"),
-        sms: twilioReady(env),
+        sms: !!smsProvider(env),
+        smsProvider: smsProvider(env),
         db: supabaseReady(env),
       });
     }

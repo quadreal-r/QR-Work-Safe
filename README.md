@@ -47,7 +47,7 @@ See [cloudflare/work-safe-api/README.md](cloudflare/work-safe-api/README.md):
 
 - `AUTH_PASSWORD`, `AUTH_SECRET`
 - `SUPABASE_SERVICE_KEY`
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`
+- Twilio / Telnyx / Plivo SMS secrets (see API README)
 - Cloudflare Email Sending enabled for `EMAIL_FROM`
 
 ### Database
