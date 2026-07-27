@@ -359,8 +359,8 @@
 <script src="native-bridge.js"></script>
 <script src="roster-data.js"></script>
 <script>
-const APP_VER='v1.0.2';
-const BUILD=3;
+const APP_VER='v1.0.3';
+const BUILD=4;
 const CF_API='https://work-safe-api.quadreal-rpiwin.workers.dev';
 const TOKEN_KEY='worksafe_cf_session_token';
 const DEVICE_KEY='worksafe_device_v1';
@@ -792,13 +792,20 @@ async function doCheckin(eventType){
     const rc=data.recipients||[];
     const emailOk=rc.filter(r=>r.email_ok).length;
     const smsOk=rc.filter(r=>r.sms_ok).length;
+    const failBits=rc.flatMap(r=>{
+      const bits=[];
+      if(!r.email_ok&&(r.email||r.email_reason)) bits.push('Email: '+(r.email_detail||r.email_reason||'failed'));
+      if(!r.sms_ok&&(r.phone||r.sms_reason)) bits.push('SMS: '+(r.sms_detail||r.sms_reason||'failed'));
+      return bits;
+    });
     const addr=data.address||'(address lookup pending)';
     setStatus(
-      `<strong class="ok">${eventType==='on_site'?'On site alert sent':'Safe on ground alert sent'}</strong><br>`+
+      `<strong class="${(emailOk||smsOk)?'ok':'err'}">${eventType==='on_site'?'On site alert sent':'Safe on ground alert sent'}</strong><br>`+
       `${formatWhen(body.occurredAt)}<br>`+
       `${addr}<br>`+
       `GPS ${geo.lat.toFixed(6)}, ${geo.lng.toFixed(6)}<br>`+
-      `Email ${emailOk}/${rc.length} · SMS ${smsOk}/${rc.length}`
+      `Email ${emailOk}/${rc.length} · SMS ${smsOk}/${rc.length}`+
+      (failBits.length?('<br><span class="err">'+failBits.join('<br>')+'</span>'):'')
     );
     toast(eventType==='on_site'?'Supervisors notified — on site':'Supervisors notified — safe on ground');
     if(window.AndroidBridge&&window.AndroidBridge.setKeepScreenOn){

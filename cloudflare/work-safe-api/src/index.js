@@ -363,38 +363,57 @@ async function sendEmail(env, to, subject, html, text) {
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: (e && e.message) || "email_failed" };
+    return {
+      ok: false,
+      reason: (e && e.message) || "email_failed",
+      detail: String((e && e.message) || e || "").slice(0, 240),
+    };
   }
 }
 
+function normalizeE164(phone) {
+  let p = String(phone || "").trim();
+  if (!p) return null;
+  p = p.replace(/[^\d+]/g, "");
+  if (p.startsWith("00")) p = "+" + p.slice(2);
+  const digits = p.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) return null;
+  if (!p.startsWith("+")) {
+    if (digits.length === 10) p = "+1" + digits;
+    else if (digits.length === 11 && digits.startsWith("1")) p = "+" + digits;
+    else return null;
+  }
+  return p;
+}
+
 function telnyxReady(env) {
+  const from = normalizeE164(env.TELNYX_FROM_NUMBER);
   return (
     typeof env.TELNYX_API_KEY === "string" &&
-    env.TELNYX_API_KEY.length > 8 &&
-    typeof env.TELNYX_FROM_NUMBER === "string" &&
-    env.TELNYX_FROM_NUMBER.startsWith("+")
+    env.TELNYX_API_KEY.trim().length > 8 &&
+    !!from
   );
 }
 
 function plivoReady(env) {
+  const from = normalizeE164(env.PLIVO_FROM_NUMBER);
   return (
     typeof env.PLIVO_AUTH_ID === "string" &&
     env.PLIVO_AUTH_ID.length > 0 &&
     typeof env.PLIVO_AUTH_TOKEN === "string" &&
     env.PLIVO_AUTH_TOKEN.length > 0 &&
-    typeof env.PLIVO_FROM_NUMBER === "string" &&
-    env.PLIVO_FROM_NUMBER.startsWith("+")
+    !!from
   );
 }
 
 function twilioReady(env) {
+  const from = normalizeE164(env.TWILIO_FROM_NUMBER);
   return (
     typeof env.TWILIO_ACCOUNT_SID === "string" &&
     env.TWILIO_ACCOUNT_SID.startsWith("AC") &&
     typeof env.TWILIO_AUTH_TOKEN === "string" &&
     env.TWILIO_AUTH_TOKEN.length > 0 &&
-    typeof env.TWILIO_FROM_NUMBER === "string" &&
-    env.TWILIO_FROM_NUMBER.startsWith("+")
+    !!from
   );
 }
 
@@ -407,28 +426,48 @@ function smsProvider(env) {
 }
 
 async function sendSmsTelnyx(env, to, body) {
+  const from = normalizeE164(env.TELNYX_FROM_NUMBER);
+  const payload = {
+    from,
+    to,
+    text: body.slice(0, 1500),
+  };
+  // Optional: set when the From number alone is not enough for the account.
+  if (env.TELNYX_MESSAGING_PROFILE_ID) {
+    payload.messaging_profile_id = String(env.TELNYX_MESSAGING_PROFILE_ID).trim();
+  }
   const res = await fetch("https://api.telnyx.com/v2/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.TELNYX_API_KEY}`,
+      Authorization: `Bearer ${env.TELNYX_API_KEY.trim()}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({
-      from: env.TELNYX_FROM_NUMBER,
-      to,
-      text: body.slice(0, 1500),
-    }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    return { ok: false, reason: `telnyx_${res.status}`, detail: detail.slice(0, 200) };
+    let reason = `telnyx_${res.status}`;
+    try {
+      const j = JSON.parse(detail);
+      const err = j?.errors?.[0];
+      if (err?.code) reason = `telnyx_${err.code}`;
+      if (err?.detail || err?.title) {
+        return {
+          ok: false,
+          reason,
+          detail: String(err.detail || err.title).slice(0, 240),
+        };
+      }
+    } catch (_) {}
+    return { ok: false, reason, detail: detail.slice(0, 240) };
   }
   return { ok: true, provider: "telnyx" };
 }
 
 async function sendSmsPlivo(env, to, body) {
   const authId = env.PLIVO_AUTH_ID;
+  const from = normalizeE164(env.PLIVO_FROM_NUMBER);
   const url = `https://api.plivo.com/v1/Account/${encodeURIComponent(authId)}/Message/`;
   const auth = btoa(`${authId}:${env.PLIVO_AUTH_TOKEN}`);
   const res = await fetch(url, {
@@ -439,7 +478,7 @@ async function sendSmsPlivo(env, to, body) {
       Accept: "application/json",
     },
     body: JSON.stringify({
-      src: env.PLIVO_FROM_NUMBER,
+      src: from,
       dst: to,
       text: body.slice(0, 1500),
     }),
@@ -454,11 +493,12 @@ async function sendSmsPlivo(env, to, body) {
 
 async function sendSmsTwilio(env, to, body) {
   const sid = env.TWILIO_ACCOUNT_SID;
+  const from = normalizeE164(env.TWILIO_FROM_NUMBER);
   const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
   const auth = btoa(`${sid}:${env.TWILIO_AUTH_TOKEN}`);
   const form = new URLSearchParams({
     To: to,
-    From: env.TWILIO_FROM_NUMBER,
+    From: from,
     Body: body.slice(0, 1500),
   });
   const res = await fetch(url, {
@@ -669,6 +709,8 @@ async function handleCheckin(request, env, deviceId) {
       sms_ok: !!smsResult.ok,
       email_reason: emailResult.ok ? null : emailResult.reason || null,
       sms_reason: smsResult.ok ? null : smsResult.reason || null,
+      email_detail: emailResult.ok ? null : emailResult.detail || null,
+      sms_detail: smsResult.ok ? null : smsResult.detail || null,
     });
   }
 
@@ -741,12 +783,19 @@ export default {
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
     if (request.method === "GET" && (path === "/" || path === "/api/health")) {
+      const provider = smsProvider(env);
       return json(request, {
         ok: true,
         service: "work-safe-api",
         email: !!(env.EMAIL && typeof env.EMAIL.send === "function"),
-        sms: !!smsProvider(env),
-        smsProvider: smsProvider(env),
+        sms: !!provider,
+        smsProvider: provider,
+        smsHints: {
+          hasTelnyxKey: !!(env.TELNYX_API_KEY && String(env.TELNYX_API_KEY).trim().length > 8),
+          hasTelnyxFrom: !!normalizeE164(env.TELNYX_FROM_NUMBER),
+          hasPlivo: plivoReady(env),
+          hasTwilio: twilioReady(env),
+        },
         db: supabaseReady(env),
       });
     }
