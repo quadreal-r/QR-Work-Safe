@@ -180,8 +180,27 @@
   .pwwrap input{flex:1;padding-right:70px!important}
   .pwshow{position:absolute;right:5px;top:50%;transform:translateY(-50%);height:36px;min-width:58px;padding:0 10px;border:0;border-radius:9px;background:transparent;color:var(--qr-blue);font:inherit;font-size:13px;font-weight:800;cursor:pointer}
 
-  .contact-edit{border:1.5px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
-  .contact-edit .hdr{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .contact-edit{
+    border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;
+    background:#fff;
+  }
+  .contact-edit .hdr{display:flex;align-items:center;gap:6px}
+  .contact-edit .hdr input[data-f=name]{flex:1;min-width:0}
+  .contact-edit .fields{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .contact-edit input[type=text],
+  .contact-edit input[type=email],
+  .contact-edit input[type=tel]{
+    height:36px;border:1.5px solid var(--line-2);border-radius:8px;padding:0 10px;
+    font:inherit;font-size:14px;background:#fff;width:100%;
+  }
+  .contact-edit .act{
+    display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--muted);
+    white-space:nowrap;flex:0 0 auto;
+  }
+  .contact-edit .btn.danger{
+    height:32px;min-width:32px;padding:0 8px;font-size:12px;border-radius:8px;flex:0 0 auto;
+  }
+  #contactsEditor{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow:auto}
   .toast{
     position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);transform:translateX(-50%);
     background:var(--qr-midnight);color:#fff;padding:12px 18px;border-radius:12px;font-weight:700;font-size:14px;
@@ -372,8 +391,8 @@
 <script src="native-bridge.js"></script>
 <script src="roster-data.js"></script>
 <script>
-const APP_VER='v1.0.4';
-const BUILD=5;
+const APP_VER='v1.0.5';
+const BUILD=6;
 const CF_API='https://work-safe-api.quadreal-rpiwin.workers.dev';
 const TOKEN_KEY='worksafe_cf_session_token';
 const DEVICE_KEY='worksafe_device_v1';
@@ -697,14 +716,15 @@ function renderContactsEditor(){
     div.className='contact-edit';
     if(c.id) div.dataset.id=c.id;
     div.innerHTML=`
-      <div class="hdr"><strong>Contact ${i+1}</strong>
-        <button type="button" class="btn danger" data-del>Remove</button></div>
-      <input type="text" data-f="name" placeholder="Name" maxlength="80">
-      <input type="email" data-f="email" placeholder="Email" maxlength="160">
-      <input type="tel" data-f="phone" placeholder="Phone (+1…)" maxlength="20">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700">
-        <input type="checkbox" data-f="active"> Active
-      </label>`;
+      <div class="hdr">
+        <input type="text" data-f="name" placeholder="Name" maxlength="80">
+        <label class="act"><input type="checkbox" data-f="active"> On</label>
+        <button type="button" class="btn danger" data-del title="Remove">×</button>
+      </div>
+      <div class="fields">
+        <input type="email" data-f="email" placeholder="Email" maxlength="160">
+        <input type="tel" data-f="phone" placeholder="Phone" maxlength="20">
+      </div>`;
     div.querySelector('[data-f=name]').value=c.name||'';
     div.querySelector('[data-f=email]').value=c.email||'';
     div.querySelector('[data-f=phone]').value=c.phone||'';
