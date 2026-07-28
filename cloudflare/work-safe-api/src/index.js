@@ -9,7 +9,8 @@ const LOGS_LIMIT = 200;
 const CONTACTS_MAX = 50;
 
 const ALLOWED_ORIGINS = new Set([
-  "https://work-safe-tracker.quadreal-rpiwin.workers.dev",
+  "https://worksafe.insp360.ca",
+  "https://work-safe-tracker.krutki11.workers.dev",
   "https://quadreal-r.github.io",
   "capacitor://localhost",
   "https://localhost",

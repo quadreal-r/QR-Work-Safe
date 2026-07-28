@@ -16,8 +16,10 @@ Same architecture as RTU QR Audit: vanilla SPA + Capacitor + Cloudflare Worker +
 
 ## Installing from a link (Home Screen shortcut)
 
-- **Cloudflare:** after `npm run ship:web` → `https://work-safe-tracker.quadreal-rpiwin.workers.dev`
+- **Cloudflare:** after `npm run ship:web` → `https://worksafe.insp360.ca` (also `https://work-safe-tracker.krutki11.workers.dev`)
 - **GitHub Pages:** `https://quadreal-r.github.io/QR-Work-Safe/` (auto-deploys from `main` via `.github/workflows/pages.yml`)
+
+Workers and the site run on the **Krutki11** Cloudflare account (owns `insp360.ca`) so Email Sending can use `worksafe@insp360.ca`.
 
 Anyone with the URL can add a Home Screen shortcut. Open **Settings → Add To Home Screen**.
 

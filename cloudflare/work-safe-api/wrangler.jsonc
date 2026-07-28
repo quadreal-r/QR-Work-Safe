@@ -1,13 +1,17 @@
 {
   "name": "work-safe-api",
   "main": "src/index.js",
-  "account_id": "ed62b8514615e386084ffd47455ec775",
+  // Krutki11 account (owns insp360.ca) — same place as Email Sending domain.
+  "account_id": "e46c718ce72e30e61182c9b1c04cf286",
   "compatibility_date": "2026-07-23",
   "workers_dev": true,
+  "routes": [
+    { "pattern": "api.worksafe.insp360.ca/*", "zone_name": "insp360.ca" }
+  ],
   "vars": {
     "TOKEN_EPOCH": "1",
     "SUPABASE_URL": "https://wyiymdtlncperqpwriuk.supabase.co",
-    "EMAIL_FROM": "worksafe@quadreal-rpiwin.workers.dev",
+    "EMAIL_FROM": "worksafe@insp360.ca",
     "EMAIL_FROM_NAME": "QuadReal Work Safe"
   },
   "send_email": [

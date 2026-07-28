@@ -2,7 +2,9 @@
 
 Cloudflare Worker for QuadReal Work Safe: shared-password auth, contact list, GPS check-in with email + SMS, per-worker logs.
 
-Public URL (after deploy): `https://work-safe-api.quadreal-rpiwin.workers.dev`
+Public URL (after deploy): `https://api.worksafe.insp360.ca` (also `https://work-safe-api.krutki11.workers.dev`)
+
+Cloudflare account: **Krutki11** (`e46c718ce72e30e61182c9b1c04cf286`) — same account as `insp360.ca`.
 
 ## Routes
 
@@ -52,7 +54,9 @@ Binding `EMAIL` via Cloudflare Email Sending. Enable the from-domain:
 npx wrangler email sending enable yourdomain.com
 ```
 
-Then set `EMAIL_FROM` to an address on that domain.
+Then set `EMAIL_FROM` to an address on that domain (currently `worksafe@insp360.ca`).
+
+Dashboard: [Email Sending](https://dash.cloudflare.com/?to=/:account/email-service/sending) → Onboard **insp360.ca**.
 
 ## SMS
 

@@ -1,9 +1,12 @@
 {
   "name": "work-safe-tracker",
-  // Same Cloudflare account as RTU Audit / rtu-pictures.
-  "account_id": "ed62b8514615e386084ffd47455ec775",
+  // Krutki11 account (owns insp360.ca).
+  "account_id": "e46c718ce72e30e61182c9b1c04cf286",
   "compatibility_date": "2026-07-23",
   "workers_dev": true,
+  "routes": [
+    { "pattern": "worksafe.insp360.ca/*", "zone_name": "insp360.ca" }
+  ],
   "assets": {
     "directory": "./www",
     "not_found_handling": "single-page-application"
